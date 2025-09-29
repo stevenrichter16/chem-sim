@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CavesOfOoo – Chem Sim</title>
+  <style>
+    :root {
+      --bg:#0b1020; --panel:#12182a; --ink:#cfe7ff; --muted:#8aaad3; --accent:#66e0ff;
+      --hot:#ff7a66; --cool:#66aaff; --gas:#a0ffc1; --danger:#ff4d6d;
+    }
+    html, body { height:100%; margin:0; background:var(--bg); color:var(--ink); font:14px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    header { display:flex; gap:12px; align-items:center; padding:12px 16px; background:linear-gradient(180deg,#12182a,#0e1426); box-shadow:0 2px 0 #0008; position:sticky; top:0; z-index:5; }
+    header h1 { font-size:16px; margin:0; font-weight:600; letter-spacing:0.5px; color:var(--ink); }
+    #wrap { display:grid; grid-template-columns: 1fr 320px; height:calc(100% - 54px); }
+    #left { display:grid; grid-template-rows:auto 1fr; }
+    #toolbar { display:flex; gap:8px; padding:10px 12px; background:#0f1528; border-bottom:1px solid #000; }
+    button, select { background:var(--panel); color:var(--ink); border:1px solid #000; border-radius:8px; padding:8px 10px; cursor:pointer; }
+    button:hover{ outline:1px solid #1f2f56; }
+    button.primary{ background:#14224a; border-color:#1b2c5f; color:#cfe7ff; }
+    #right { border-left:1px solid #000; background:var(--panel); display:flex; flex-direction:column; }
+    #inspector { padding:12px; overflow:auto; display:flex; flex-direction:column; gap:12px; }
+    #inspector .panel { background:#0f1528; border:1px solid #000; border-radius:10px; padding:10px 12px; }
+    #inspector .panel h4 { margin:0 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); }
+    #inspector .panel h3 { margin:0; font-size:15px; font-weight:600; color:var(--ink); }
+    #inspector .tile-meta-row { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+    #inspector .stats-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; margin-top:8px; }
+    #inspector .stat { background:#0a1124; padding:6px 8px; border-radius:8px; border:1px solid #000; }
+    #inspector .stat .bar { height:8px; background:#060b18; border-radius:6px; overflow:hidden; margin-top:4px; }
+    #inspector .stat .bar i { display:block; height:100%; background:linear-gradient(90deg,var(--accent),#8cf); }
+    #inspector .stat small { display:block; margin-top:4px; font-size:11px; color:var(--muted); }
+    .reaction-list { display:flex; flex-direction:column; gap:8px; }
+    .reaction { background:#0a1124; border:1px solid #000; border-radius:8px; padding:8px; }
+    .reaction header { display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--ink); }
+    .reaction .icons { display:flex; gap:6px; font-size:14px; }
+    .reaction .meter { height:8px; background:#060b18; border-radius:4px; overflow:hidden; margin:6px 0; }
+    .reaction .meter i { display:block; height:100%; background:linear-gradient(90deg,#66e0ff,#8cf); }
+    .reaction .meta { display:flex; justify-content:space-between; gap:8px; font-size:12px; color:var(--muted); }
+    .reaction .meta strong { color:var(--ink); font-weight:500; }
+    .bar-row { display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center; font-size:12px; margin:6px 0; }
+    .bar-row .value { color:var(--muted); font-variant-numeric:tabular-nums; }
+    .bar-track { height:8px; background:#060b18; border-radius:4px; overflow:hidden; }
+    .bar-track i { display:block; height:100%; border-radius:4px; }
+    .sparkline-wrap { margin-top:8px; }
+    .sparkline { width:100%; height:60px; background:#060b18; border:1px solid #000; border-radius:6px; }
+    .sparkline polyline { fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+    .sparkline polyline.temp { stroke:#ff8a66; }
+    .sparkline polyline.pressure { stroke:#66e0ff; }
+    .sparkline-legend { display:flex; gap:12px; font-size:11px; margin-top:4px; color:var(--muted); }
+    .sparkline-legend .temp-dot::before, .sparkline-legend .pressure-dot::before { content:''; width:12px; height:2px; display:inline-block; margin-right:6px; background:currentColor; vertical-align:middle; }
+    .sparkline-legend .temp-dot { color:#ff8a66; }
+    .sparkline-legend .pressure-dot { color:#66e0ff; }
+    .muted { color:var(--muted); }
+    canvas { image-rendering: pixelated; display:block; width:100%; height:100%; background:#081023; }
+    #legend { padding:8px 12px; border-top:1px solid #000; font-size:12px; color:var(--muted); }
+    .pill { display:inline-block; padding:2px 6px; border-radius:999px; background:#0a1226; border:1px solid #000; margin-right:6px; }
+    .grid { display:grid; grid-template-columns: 1fr auto; gap:6px; }
+    .row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .kbd { background:#0a1226; border:1px solid #000; padding:2px 6px; border-radius:6px; color:#a8c7ff }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚗️ CavesOfOoo — Standalone Chemistry</h1>
+    <span class="pill">WASD / Click to seed</span>
+    <span class="pill">Space: Pause</span>
+  </header>
+  <div id="wrap">
+    <section id="left">
+      <div id="toolbar">
+        <button id="btnFizz" class="primary">Acid + Soda</button>
+        <button id="btnKWater">Potassium + Water</button>
+        <button id="btnPeroxide">Foamy Peroxide</button>
+        <button id="btnClear">Clear</button>
+        <select id="brush">
+          <option value="HCl">HCl (acid)</option>
+          <option value="NaHCO3">NaHCO3 (bicarb)</option>
+          <option value="K">K (potassium)</option>
+          <option value="H2O">H2O (water)</option>
+          <option value="H2O2">H2O2 (peroxide)</option>
+          <option value="NaOH">NaOH (base)</option>
+          <option value="AgNO3">AgNO3</option>
+          <option value="NaCl">NaCl</option>
+        </select>
+        <button id="btnPaint">Paint</button>
+        <button id="btnEyedrop">Inspect</button>
+        <button id="btnPause">⏸︎ Pause</button>
+      </div>
+      <canvas id="view" width="512" height="512"></canvas>
+    </section>
+    <aside id="right">
+      <div id="inspector"></div>
+      <div id="legend">Heat = red • Gas = bright • Liquid/Aq = blue-green • Pressure rings pulse outward</div>
+    </aside>
+  </div>
+
+<script type="module">
+// --- Inline packs (trimmed) ---
+const Reactions = [
+  {
+    "id": "acid_base_hcl_naoh",
+    "equation": "HCl + NaOH -> NaCl + H2O",
+    "stoich": {
+      "reactants": {"HCl": 1, "NaOH": 1},
+      "products": {"NaCl": 1, "H2O": 1}
+    },
+    "phases": {"HCl": "aq", "NaOH": "aq", "NaCl": "aq", "H2O": "l"},
+    "tags": ["acid_base", "exothermic:medium"],
+    "rates": {"base": 0.7},
+    "effects": {"heatPerUnit": 12, "pHTrend": "toward_neutral"},
+    "visuals": {"bubbles": false}
+  },
+  {
+    "id": "acid_base_h2so4_naoh",
+    "equation": "H2SO4 + 2 NaOH -> Na2SO4 + 2 H2O",
+    "stoich": {
+      "reactants": {"H2SO4": 1, "NaOH": 2},
+      "products": {"Na2SO4": 1, "H2O": 2}
+    },
+    "phases": {"H2SO4": "aq", "NaOH": "aq", "Na2SO4": "aq", "H2O": "l"},
+    "tags": ["acid_base", "exothermic:high"],
+    "rates": {"base": 0.8},
+    "effects": {"heatPerUnit": 18, "pHTrend": "toward_neutral"},
+    "visuals": {"bubbles": false}
+  },
+  {
+    "id": "acid_carbonate_hcl_na2co3",
+    "equation": "2 HCl + Na2CO3 -> 2 NaCl + H2O + CO2",
+    "stoich": {
+      "reactants": {"HCl": 2, "Na2CO3": 1},
+      "products": {"NaCl": 2, "H2O": 1, "CO2": 1}
+    },
+    "phases": {"HCl": "aq", "Na2CO3": "s", "NaCl": "aq", "H2O": "l", "CO2": "g"},
+    "tags": ["gas_evolution", "exothermic:low"],
+    "rates": {"base": 0.6, "surfaceRole": "Na2CO3"},
+    "effects": {
+      "heatPerUnit": 10,
+      "emitGas": {"CO2": 1.0},
+      "pressurePulse": {"size": 0.4, "cooldownMs": 120, "cap": 3.0},
+      "pHDelta": -1.0
+    },
+    "visuals": {"bubbles": true}
+  },
+  {
+    "id": "acid_bicarb_hcl_nahco3",
+    "equation": "HCl + NaHCO3 -> NaCl + H2O + CO2",
+    "stoich": {
+      "reactants": {"HCl": 1, "NaHCO3": 1},
+      "products": {"NaCl": 1, "H2O": 1, "CO2": 1}
+    },
+    "phases": {"HCl": "aq", "NaHCO3": "s", "NaCl": "aq", "H2O": "l", "CO2": "g"},
+    "tags": ["gas_evolution", "exothermic:low"],
+    "rates": {"base": 0.7, "surfaceRole": "NaHCO3"},
+    "effects": {
+      "heatPerUnit": 8,
+      "emitGas": {"CO2": 1.0},
+      "pressurePulse": {"size": 0.35, "cooldownMs": 120, "cap": 2.5}
+    },
+    "visuals": {"bubbles": true}
+  },
+  {
+    "id": "metal_water_na",
+    "equation": "2 Na + 2 H2O -> 2 NaOH + H2",
+    "stoich": {
+      "reactants": {"Na": 2, "H2O": 2},
+      "products": {"NaOH": 2, "H2": 1}
+    },
+    "phases": {"Na": "s", "H2O": "l", "NaOH": "aq", "H2": "g"},
+    "tags": ["metal_water", "exothermic:high", "gas_evolution"],
+    "rates": {"base": 0.8, "requires": {"moisture": 0.03}, "surfaceRole": "Na"},
+    "effects": {
+      "heatPerUnit": 48,
+      "emitGas": {"H2": 1.0},
+      "pressurePulse": {"size": 0.55, "cooldownMs": 120, "cap": 4.0},
+      "pHDelta": 1.2
+    },
+    "visuals": {"bubbles": true, "sparks": true}
+  },
+  {
+    "id": "metal_water_k",
+    "equation": "2 K + 2 H2O -> 2 KOH + H2",
+    "stoich": {
+      "reactants": {"K": 2, "H2O": 2},
+      "products": {"KOH": 2, "H2": 1}
+    },
+    "phases": {"K": "s", "H2O": "l", "KOH": "aq", "H2": "g"},
+    "tags": ["metal_water", "exothermic:very_high", "gas_evolution"],
+    "rates": {"base": 0.9, "requires": {"moisture": 0.05}, "surfaceRole": "K"},
+    "effects": {
+      "heatPerUnit": 60,
+      "emitGas": {"H2": 1.0},
+      "pressurePulse": {"size": 0.6, "cooldownMs": 120, "cap": 5.0},
+      "pHDelta": 1.5
+    },
+    "visuals": {"bubbles": true, "sparks": true}
+  },
+  {
+    "id": "peroxide_decomp",
+    "equation": "2 H2O2 -> 2 H2O + O2",
+    "stoich": {
+      "reactants": {"H2O2": 2},
+      "products": {"H2O": 2, "O2": 1}
+    },
+    "phases": {"H2O2": "aq", "H2O": "l", "O2": "g"},
+    "tags": ["gas_evolution", "exothermic:medium", "catalyzed"],
+    "rates": {"base": 0.3, "requiresTag": "catalyst_MnO2"},
+    "effects": {
+      "heatPerUnit": 16,
+      "emitGas": {"O2": 1.0},
+      "pressurePulse": {"size": 0.45, "cooldownMs": 140, "cap": 3.0}
+    },
+    "visuals": {"foam": true}
+  },
+  {
+    "id": "combust_h2",
+    "equation": "2 H2 + O2 -> 2 H2O(g)",
+    "stoich": {
+      "reactants": {"H2": 2, "O2": 1},
+      "products": {"H2O_g": 2}
+    },
+    "phases": {"H2": "g", "O2": "g", "H2O_g": "g"},
+    "tags": ["combustion", "exothermic:very_high", "requires_ignition"],
+    "rates": {"base": 1.0, "requires": {"ignition": true}},
+    "effects": {
+      "heatPerUnit": 120,
+      "lightFlash": true,
+      "pressurePulse": {"size": 0.8, "cooldownMs": 80, "cap": 6.0}
+    },
+    "visuals": {"flame": true}
+  },
+  {
+    "id": "precip_agcl",
+    "equation": "AgNO3 + NaCl -> AgCl ↓ + NaNO3",
+    "stoich": {
+      "reactants": {"AgNO3": 1, "NaCl": 1},
+      "products": {"AgCl(s)": 1, "NaNO3": 1}
+    },
+    "phases": {"AgNO3": "aq", "NaCl": "aq", "AgCl(s)": "s", "NaNO3": "aq"},
+    "tags": ["precipitation"],
+    "rates": {"base": 0.9},
+    "effects": {"precipitate": {"AgCl(s)": 1.0}},
+    "visuals": {"cloudy": true}
+  }
+];
+const Materials = {
+  "meta": {
+    "version": "1.0",
+    "notes": "Approximate, game-balanced material properties aligned to CavesOfOoo_ChemReactions.json. Units are indicative, feel free to retune for balance.",
+    "units": {
+      "density_g_cm3": "g/cm^3",
+      "melting_C": "°C",
+      "boiling_C": "°C",
+      "ignition_C": "°C",
+      "heatCombust_kJ_per_mol": "kJ/mol",
+      "thermalConductivity_W_mK": "W/(m·K)",
+      "electricalConductivity": "qualitative: insulator|poor|semi|good|excellent",
+      "vaporPressure_kPa_25C": "kPa at 25°C"
+    },
+    "gameplayFields": [
+      "flammability",
+      "toxicity",
+      "corrosivity",
+      "hygroscopic",
+      "statusHooks",
+      "defaultSurfaceFactor"
+    ]
+  },
+  "materials": {
+    "H2O(l)": {
+      "displayName": "Water",
+      "phaseSTP": "l",
+      "color": "clear",
+      "density_g_cm3": 1.0,
+      "melting_C": 0,
+      "boiling_C": 100,
+      "flammability": "none",
+      "electricalConductivity": "poor",
+      "thermalConductivity_W_mK": 0.6,
+      "toxicity": "none",
+      "corrosivity": "neutral",
+      "hazardTags": ["diluent", "wet"],
+      "statusHooks": { "wetnessMod": 1.0, "shockMod": 1.5, "extinguishPower": 0.6 },
+      "defaultSurfaceFactor": 0.7
+    },
+    "HCl": {
+      "displayName": "Hydrochloric Acid (aq)",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "density_g_cm3": 1.05,
+      "flammability": "none",
+      "electricalConductivity": "good",
+      "toxicity": "mod",
+      "corrosivity": "acid",
+      "hazardTags": ["acid", "caustic"],
+      "statusHooks": { "causticPower": 0.8 },
+      "defaultSurfaceFactor": 0.8
+    },
+    "NaOH": {
+      "displayName": "Sodium Hydroxide (aq)",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "density_g_cm3": 1.1,
+      "flammability": "none",
+      "electricalConductivity": "good",
+      "toxicity": "mod",
+      "corrosivity": "base",
+      "hazardTags": ["base", "caustic"],
+      "statusHooks": { "causticPower": 0.9 },
+      "defaultSurfaceFactor": 0.8
+    },
+    "Na2CO3": {
+      "displayName": "Sodium Carbonate",
+      "phaseSTP": "s",
+      "color": "white",
+      "density_g_cm3": 2.5,
+      "melting_C": 851,
+      "flammability": "none",
+      "toxicity": "low",
+      "corrosivity": "mild_base",
+      "hazardTags": ["alkali", "buffer"],
+      "statusHooks": { "causticPower": 0.2 },
+      "defaultSurfaceFactor": 0.5
+    },
+    "NaHCO3": {
+      "displayName": "Sodium Bicarbonate",
+      "phaseSTP": "s",
+      "color": "white",
+      "density_g_cm3": 2.2,
+      "melting_C": 50,
+      "flammability": "none",
+      "toxicity": "low",
+      "corrosivity": "mild_base",
+      "hazardTags": ["buffer", "gas_evolution_with_acid"],
+      "statusHooks": { "neutralizeAcid": 0.7 },
+      "defaultSurfaceFactor": 0.6
+    },
+    "NH3": {
+      "displayName": "Ammonia (aq)",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "density_g_cm3": 0.9,
+      "flammability": "low",
+      "ignition_C": 651,
+      "toxicity": "mod",
+      "corrosivity": "base",
+      "hazardTags": ["pungent", "irritant"],
+      "statusHooks": { "causticPower": 0.4, "stunChance": 0.05 },
+      "defaultSurfaceFactor": 0.8
+    },
+    "Na": {
+      "displayName": "Sodium",
+      "phaseSTP": "s",
+      "color": "silvery",
+      "density_g_cm3": 0.97,
+      "melting_C": 98,
+      "flammability": "reactive",
+      "toxicity": "low",
+      "hazardTags": ["water_reactive"],
+      "statusHooks": { "spark": 0.4 },
+      "defaultSurfaceFactor": 0.6
+    },
+    "K": {
+      "displayName": "Potassium",
+      "phaseSTP": "s",
+      "color": "silvery",
+      "density_g_cm3": 0.86,
+      "melting_C": 64,
+      "flammability": "reactive",
+      "toxicity": "low",
+      "hazardTags": ["water_reactive", "hot_sparks"],
+      "statusHooks": { "spark": 0.6 },
+      "defaultSurfaceFactor": 0.7
+    },
+    "KOH": {
+      "displayName": "Potassium Hydroxide (aq)",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "toxicity": "mod",
+      "corrosivity": "base",
+      "hazardTags": ["caustic"],
+      "statusHooks": { "causticPower": 1.0 },
+      "defaultSurfaceFactor": 0.8
+    },
+    "H2": {
+      "displayName": "Hydrogen",
+      "phaseSTP": "g",
+      "color": "invisible",
+      "density_g_cm3": 0.000089,
+      "flammability": "high",
+      "ignition_C": 500,
+      "heatCombust_kJ_per_mol": 286,
+      "toxicity": "none",
+      "hazardTags": ["explosive", "light_gas"],
+      "statusHooks": { "explosionPower": 0.8 },
+      "defaultSurfaceFactor": 1.0
+    },
+    "O2": {
+      "displayName": "Oxygen",
+      "phaseSTP": "g",
+      "color": "invisible",
+      "density_g_cm3": 0.00133,
+      "flammability": "oxidizer",
+      "toxicity": "none",
+      "hazardTags": ["oxidizer"],
+      "statusHooks": { "boostCombustion": 0.5 },
+      "defaultSurfaceFactor": 1.0
+    },
+    "CO2": {
+      "displayName": "Carbon Dioxide",
+      "phaseSTP": "g",
+      "color": "invisible",
+      "density_g_cm3": 0.00198,
+      "flammability": "none",
+      "toxicity": "low",
+      "hazardTags": ["asphyxiant"],
+      "statusHooks": { "smotherFlames": 0.7 },
+      "defaultSurfaceFactor": 1.0
+    },
+    "AgNO3": {
+      "displayName": "Silver Nitrate (aq)",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "toxicity": "mod",
+      "corrosivity": "oxidizer",
+      "hazardTags": ["stains_skin"],
+      "statusHooks": { "stain": 0.5 },
+      "defaultSurfaceFactor": 0.8
+    },
+    "NaCl": {
+      "displayName": "Sodium Chloride (aq)",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "toxicity": "none",
+      "corrosivity": "neutral",
+      "hazardTags": ["electrolyte"],
+      "statusHooks": { "conductivityBoost": 0.3 },
+      "defaultSurfaceFactor": 0.8
+    },
+    "AgCl(s)": {
+      "displayName": "Silver Chloride (s)",
+      "phaseSTP": "s",
+      "color": "white",
+      "toxicity": "low",
+      "hazardTags": ["precipitate"],
+      "statusHooks": { "clogging": 0.6 },
+      "defaultSurfaceFactor": 0.4
+    }
+  }
+};
+
+// For this standalone, embed the packs directly by pasting from the canvas JSONs.
+// If you prefer to keep separate files, replace below with fetch() and ensure same-origin.
+
+// --- Minimal registries ---
+const MaterialRegistry = {
+  materials: (Materials && Materials.materials) || Materials,
+  meta: (Materials && Materials.meta) || null,
+  get(id){
+    const mats = this.materials;
+    if(!mats) return null;
+    if(mats[id]) return mats[id];
+    const alternates = ["(aq)", "(l)", "(s)", "(g)"];
+    for(const suff of alternates){ const key = id.endsWith(suff) ? id : id + suff; if(mats[key]) return mats[key]; }
+    if(id.includes('(') && mats[id.replace(/\([^)]*\)/g, '')]) return mats[id.replace(/\([^)]*\)/g, '')];
+    return null;
+  }
+};
+const ReactionRegistry = { list: Reactions };
+
+const SPECIES_COLORS = {
+  acid: '#ff6e6b',
+  base: '#5fa7ff',
+  gas: '#b8ff66',
+  solid: '#eaeff5',
+  neutral: '#9ea9ff'
+};
+
+const HISTORY_DURATION_MS = 10000;
+const HISTORY_SAMPLE_MS = 150;
+const historySubscribers = new Set();
+
+function colorForSpecies(id, bag='species'){
+  if(bag==='gas') return SPECIES_COLORS.gas;
+  if(bag==='solids') return SPECIES_COLORS.solid;
+  const mat = MaterialRegistry.get(id);
+  const corrosivity = mat?.corrosivity || '';
+  const tags = mat?.hazardTags || [];
+  if(tags.includes('acid') || /acid/.test(corrosivity)) return SPECIES_COLORS.acid;
+  if(tags.includes('base') || /base/.test(corrosivity)) return SPECIES_COLORS.base;
+  if(mat?.phaseSTP==='g' || /(_g|\(g\))$/.test(id)) return SPECIES_COLORS.gas;
+  if(mat?.phaseSTP==='s' || /\(s\)$/.test(id)) return SPECIES_COLORS.solid;
+  return SPECIES_COLORS.neutral;
+}
+
+function recordReactionActivity(tile, entry){
+  if(!tile._activity) tile._activity=[];
+  const existing = tile._activity.find(item=>item.id===entry.id);
+  if(existing){
+    existing.extent = Math.min(1, Math.max(existing.extent, entry.extent));
+    existing.rawExtent = (existing.rawExtent || 0) + entry.rawExtent;
+    if(entry.limiter && entry.limiter !== 'rate') existing.limiter = entry.limiter;
+    existing.fizz = existing.fizz || entry.fizz;
+    existing.heat = existing.heat || entry.heat;
+    for(const prod of entry.products){
+      const match = existing.products.find(p=>p.id===prod.id);
+      if(match) match.qty += prod.qty; else existing.products.push({...prod});
+    }
+  } else {
+    entry.products = entry.products.map(p=>({...p}));
+    tile._activity.push(entry);
+  }
+  if(tile._activity.length>6) tile._activity.splice(0, tile._activity.length-6);
+}
+
+// --- World/Tile ---
+class Tile{
+  constructor(x,y){
+    this.x=x; this.y=y;
+    this.species={}; this.solids={}; this.gas={};
+    this.temp=20; this.pH=7; this.moisture=0; this.oxygen=0.21;
+    this.surfaceFactor={}; this.pressure=0;
+    this._lastPulseAt=0;
+    this._activity=[];
+    this.history=[];
+  }
+}
+class World{
+  constructor(w,h){ this.w=w; this.h=h; this.grid=Array.from({length:h},(_,y)=>Array.from({length:w},(_,x)=>new Tile(x,y))); }
+  tile(x,y){ if(x<0||y<0||x>=this.w||y>=this.h) return null; return this.grid[y][x]; }
+}
+
+// --- Reactor core (compact) ---
+function runReactionOnTile(tile, rx, dt, now, emitShockwave){
+  const reactants = rx.stoich?.reactants || {};
+  const products = rx.stoich?.products || {};
+  const req=rx.rates?.requires||{};
+  if(req.moisture && tile.moisture<req.moisture) return 0;
+  if(req.oxygen && tile.oxygen<req.oxygen) return 0;
+  if(req.temp && tile.temp<req.temp) return 0;
+  if(req.ignition && !tile.ignited) return 0;
+  if(req.power && (tile.power||0)<req.power) return 0;
+  for(const [sp,_n] of Object.entries(reactants)){ if((tile.species[sp]||0)<=0) return 0; }
+  const available={}; for(const sp of Object.keys(reactants)){ available[sp]=tile.species[sp]||0; }
+  let rate = rx.rates?.base ?? 0.5;
+  const surfKey=rx.rates?.surfaceRole; if(surfKey){ const exp=tile.surfaceFactor[surfKey] ?? 0.6; rate*=Math.max(0,Math.min(1,exp)); }
+  let maxExtent = Infinity; let limitingReactant=null; let limitingRatio=Infinity;
+  for(const [sp,n] of Object.entries(reactants)){
+    const denom=n||1; const ratio=(available[sp]||0)/denom;
+    if(ratio<limitingRatio){ limitingRatio=ratio; limitingReactant=sp; }
+    maxExtent=Math.min(maxExtent,ratio);
+  }
+  const theoretical=Math.max(0, rate*dt);
+  const extent=Math.max(0, Math.min(maxExtent, theoretical));
+  if(extent<=0) return 0;
+  for(const [sp,n] of Object.entries(reactants)){ tile.species[sp]=Math.max(0,(tile.species[sp]||0)-n*extent); }
+  const produced=[]; const pushProduct=(id,qty)=>{ if(!qty) return; const existing=produced.find(p=>p.id===id); if(existing) existing.qty+=qty; else produced.push({id,qty}); };
+  for(const [sp,n] of Object.entries(products)){
+    const phase = rx.phases?.[sp] || MaterialRegistry.get(sp)?.phaseSTP || 'aq'; const qty=n*extent;
+    pushProduct(sp,qty);
+    if(phase==='g') tile.gas[sp]=(tile.gas[sp]||0)+qty; else if(phase==='s'||sp.endsWith('(s)')) tile.solids[sp]=(tile.solids[sp]||0)+qty; else tile.species[sp]=(tile.species[sp]||0)+qty;
+  }
+  const fx=rx.effects||{}; if(fx.heatPerUnit) tile.temp+=fx.heatPerUnit*extent; if(fx.pHDelta) tile.pH+=fx.pHDelta*extent; if(fx.pHTrend==='toward_neutral'){ const sign=tile.pH>7?-1:1; tile.pH+=sign*0.2*extent; }
+  if(fx.emitGas){ for(const [g,m] of Object.entries(fx.emitGas)){ const qty=m*extent; tile.gas[g]=(tile.gas[g]||0)+qty; pushProduct(g,qty); } }
+  if(fx.precipitate){ for(const [s,m] of Object.entries(fx.precipitate)){ const qty=m*extent; tile.solids[s]=(tile.solids[s]||0)+qty; pushProduct(s,qty); } }
+  if(fx.pressurePulse){ const {size,cooldownMs,cap}=fx.pressurePulse; if(!tile._lastPulseAt || (now-tile._lastPulseAt)>=cooldownMs){ tile.pressure=Math.min((tile.pressure||0)+size,cap); tile._lastPulseAt=now; emitShockwave?.(tile.x,tile.y,size);} }
+  const limitedByReactant = maxExtent!==Infinity && extent>=maxExtent-1e-9;
+  const limiter = limitedByReactant ? (limitingReactant || 'reactant mix') : 'rate';
+  const fizz = Boolean((rx.tags||[]).some(tag=>String(tag).includes('gas')) || fx.emitGas || produced.some(p=>{
+    const phase = rx.phases?.[p.id] || MaterialRegistry.get(p.id)?.phaseSTP;
+    return phase==='g';
+  }));
+  const heat = Boolean((fx.heatPerUnit||0)>0 || (rx.tags||[]).some(tag=>String(tag).startsWith('exothermic')));
+  recordReactionActivity(tile, {
+    id: rx.id,
+    extent: theoretical>0 ? Math.min(1, extent/theoretical) : 0,
+    rawExtent: extent,
+    limiter,
+    products: produced,
+    fizz,
+    heat
+  });
+  return extent;
+}
+
+// --- Diffusion & environment ---
+function diffuse(world, key, coeff=0.08, bag='species'){
+  const h=world.h,w=world.w; const deltas=Array.from({length:h},()=>Array.from({length:w},()=>0));
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    const t=world.grid[y][x]; const q=(t[bag][key]||0); const nbs=[[1,0],[-1,0],[0,1],[0,-1]];
+    for(const [dx,dy] of nbs){ const nb=world.tile(x+dx,y+dy); if(!nb) continue; const dq=coeff*(q-(nb[bag][key]||0)); if(dq>0){ deltas[y][x]-=dq; deltas[y+dy][x+dx]+=dq; } }
+  }
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){ const t=world.grid[y][x]; const d=deltas[y][x]; if(d) t[bag][key]=Math.max(0,(t[bag][key]||0)+d); }
+}
+function environmentPass(world){
+  for(let y=0;y<world.h;y++) for(let x=0;x<world.w;x++){
+    const t=world.grid[y][x]; t.oxygen+= (0.21-(t.oxygen||0))*0.02; // air
+    const steam=t.gas['H2O_g']||0; if(steam>0 && t.temp<95){ const c=Math.min(steam,0.1*steam); t.gas['H2O_g']-=c; t.species['H2O']=(t.species['H2O']||0)+c; t.moisture=Math.min(1,t.moisture+0.02*c);} 
+    const water=t.species['H2O']||0; if(water>0 && t.temp>100){ const e=Math.min(water,0.05*water); t.species['H2O']-=e; t.gas['H2O_g']=(t.gas['H2O_g']||0)+e; t.moisture=Math.max(0,t.moisture-0.01*e);} 
+    // redissolve simple rule
+    if(t.moisture>0.3){ for(const [k,qty] of Object.entries(t.solids)){ if(qty>0 && k.endsWith('(s)')){ const aq=k.replace('(s)',''); const take=Math.min(qty,0.02*qty+0.01); t.solids[k]-=take; t.species[aq]=(t.species[aq]||0)+take; } } }
+    // ignition heuristic
+    const hot=t.temp>520 || (t.pressure||0)>5; const hasFuel=((t.gas['H2']||0)+(t.gas['CH4']||0))>0.05; const hasOx=(t.oxygen||0)>0.18 || (t.gas['O2']||0)>0.02; if(hot&&hasFuel&&hasOx) t.ignited=true; if(t.ignited && t.temp<120 && (t.gas['H2']||0)<0.01 && (t.gas['CH4']||0)<0.01) t.ignited=false;
+    // clamps
+    t.pH=Math.max(0,Math.min(14,t.pH)); t.temp=Math.max(-50,Math.min(2000,t.temp)); t.pressure=Math.max(0,Math.min(12,t.pressure||0));
+  }
+}
+
+// --- Shockwave ---
+function makeShockwave(world){
+  return function emitShockwave(x,y,mag){
+    const rings=[[0,1],[1,0.6],[2,0.35]]; for(const [r,scale] of rings){ for(let dy=-r;dy<=r;dy++){ for(let dx=-r;dx<=r;dx++){ if(Math.abs(dx)+Math.abs(dy)!==r) continue; const t=world.tile(x+dx,y+dy); if(!t) continue; t.pressure=Math.max(0,Math.min((t.pressure||0)+mag*scale,8)); } } }
+  };
+}
+
+// --- Sim wrapper ---
+function simulateFrame(world, dt, now){
+  const emitShockwave = makeShockwave(world);
+  const sub=0.05;
+  const steps=Math.max(1, Math.ceil(dt/sub));
+  const h=steps ? dt/steps : dt;
+  for(let y=0;y<world.h;y++) for(let x=0;x<world.w;x++){
+    const t=world.grid[y][x];
+    if(t._activity) t._activity.length=0; else t._activity=[];
+  }
+  for(let s=0;s<steps;s++){
+    for(let y=0;y<world.h;y++) for(let x=0;x<world.w;x++){
+      const t=world.grid[y][x]; for(const rx of ReactionRegistry.list){ runReactionOnTile(t, rx, h, now, emitShockwave); }
+    }
+    environmentPass(world);
+    // a couple diffusion keys for demo
+    diffuse(world,'HCl',0.08,'species'); diffuse(world,'NaOH',0.08,'species');
+    diffuse(world,'CO2',0.2,'gas'); diffuse(world,'H2',0.25,'gas'); diffuse(world,'O2',0.18,'gas');
+  }
+  recordSubscribedHistories(now);
+}
+
+function clampPercent(value){ return Math.max(0, Math.min(100, value)); }
+
+function screenToTile(e){
+  const rect=canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  const x = Math.floor(((e.clientX - rect.left) * scaleX) / S);
+  const y = Math.floor(((e.clientY - rect.top) * scaleY) / S);
+  return {tileX:x, tileY:y};
+}
+
+function formatQty(value){
+  if(!isFinite(value)) return '0.00';
+  const abs=Math.abs(value);
+  if(abs>=10) return value.toFixed(0);
+  if(abs>=1) return value.toFixed(1);
+  return value.toFixed(2);
+}
+
+function renderActiveReactions(tile){
+  const list=(tile._activity||[]).filter(Boolean);
+  if(!list.length) return '<div class="muted">No active reactions</div>';
+  const sorted=[...list].sort((a,b)=>(b.extent||0)-(a.extent||0)).slice(0,5);
+  return `<div class="reaction-list">${sorted.map(renderReactionCard).join('')}</div>`;
+}
+
+function renderReactionCard(info){
+  const percent=Math.round(Math.min(1, info.extent||0)*100);
+  const limiterLabel = info.limiter && info.limiter!=='rate' ? info.limiter : 'rate-limited';
+  const icons=`${info.fizz?'<span class="icon" title="Gas evolution">⚡</span>':''}${info.heat?'<span class="icon" title="Exothermic heat spike">🔥</span>':''}`;
+  const products=(info.products||[]).sort((a,b)=>(b.qty||0)-(a.qty||0)).slice(0,4);
+  const productText=products.length?products.map(p=>`${p.id} (${formatQty(p.qty||0)})`).join(', '):'—';
+  return `
+    <div class="reaction">
+      <header><span class="rxid">${info.id}</span><span class="icons">${icons}</span></header>
+      <div class="meter"><i style="width:${percent}%"></i></div>
+      <div class="meta"><strong>Intensity</strong><span>${percent}%</span></div>
+      <div class="meta"><strong>Limiter</strong><span>${limiterLabel}</span></div>
+      <div class="meta"><strong>Products</strong><span>${productText}</span></div>
+    </div>`;
+}
+
+function renderBarSection(title, entries, bag){
+  const items=entries.filter(([,v])=>v>0.0001).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  if(!items.length) return `<section class="panel"><h4>${title}</h4><div class="muted">None</div></section>`;
+  const max=items[0][1];
+  const rows=items.map(([id,value])=>{
+    const width=max>0?Math.max(4, (value/max)*100):0;
+    const color=colorForSpecies(id, bag);
+    return `<div class="bar-row"><span class="label">${id}</span><div class="bar-track"><i style="width:${clampPercent(width)}%; background:${color};"></i></div><span class="value">${formatQty(value)}</span></div>`;
+  }).join('');
+  return `<section class="panel"><h4>${title}</h4>${rows}</section>`;
+}
+
+function ensureHistoryBuffer(tile){
+  if(!tile) return null;
+  if(!tile.history) tile.history=[];
+  if(!tile._historyMeta) tile._historyMeta={ lastSampleAt: -Infinity };
+  return tile.history;
+}
+
+function subscribeHistory(tile){
+  if(!tile) return;
+  ensureHistoryBuffer(tile);
+  historySubscribers.add(tile);
+}
+
+function unsubscribeHistory(tile, {clear=false}={}){
+  if(!tile) return;
+  historySubscribers.delete(tile);
+  if(clear && tile.history) tile.history.length=0;
+  if(tile._historyMeta) tile._historyMeta.lastSampleAt = -Infinity;
+}
+
+function recordSubscribedHistories(now){
+  if(!historySubscribers.size) return;
+  const cutoff = now - HISTORY_DURATION_MS;
+  for(const tile of historySubscribers){
+    if(!tile) continue;
+    const history = ensureHistoryBuffer(tile);
+    if(!history) continue;
+    const meta = tile._historyMeta;
+    if(meta && (now - (meta.lastSampleAt||-Infinity)) < HISTORY_SAMPLE_MS) continue;
+    history.push({ t: now, temp: tile.temp, pressure: tile.pressure||0 });
+    if(meta) meta.lastSampleAt = now;
+    while(history.length && history[0].t < cutoff){ history.shift(); }
+    if(history.length>200) history.shift();
+  }
+}
+
+function renderSparkline(history){
+  if(!history || history.length<2){
+    return '<div class="sparkline-wrap"><div class="sparkline sparkline-empty"></div><div class="sparkline-legend muted">Collecting history…</div></div>';
+  }
+  const width=200, height=60, pad=4;
+  const minT=history[0].t;
+  const maxT=history[history.length-1].t;
+  const span=Math.max(1, maxT-minT);
+  const temps=history.map(h=>h.temp);
+  const presses=history.map(h=>(h.pressure||0));
+  const minTemp=Math.min(...temps), maxTemp=Math.max(...temps);
+  const minPress=Math.min(...presses), maxPress=Math.max(...presses);
+  const mapPoints=(values,minVal,maxVal)=>values.map((v,i)=>{
+    const x=pad+((history[i].t-minT)/span)*(width-2*pad);
+    const range=maxVal-minVal;
+    const ratio=range?((v-minVal)/range):0.5;
+    const y=height-pad - ratio*(height-2*pad);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const tempPoints=mapPoints(temps,minTemp,maxTemp);
+  const pressurePoints=mapPoints(presses,minPress,maxPress);
+  const latest=history[history.length-1];
+  return `<div class="sparkline-wrap">
+    <svg class="sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+      <polyline class="temp" points="${tempPoints}" />
+      <polyline class="pressure" points="${pressurePoints}" />
+    </svg>
+    <div class="sparkline-legend"><span class="temp-dot">Temp ${latest.temp.toFixed(1)}°C</span><span class="pressure-dot">Pressure ${(latest.pressure||0).toFixed(2)}</span></div>
+  </div>`;
+}
+
+function renderStatsPanel(tile, x, y){
+  const tempPct=clampPercent((tile.temp-20)/5);
+  const pHPct=clampPercent((tile.pH/14)*100);
+  const moisturePct=clampPercent(tile.moisture*100);
+  const pressurePct=clampPercent(((tile.pressure||0)/12)*100);
+  return `
+    <section class="panel tile-panel">
+      <div class="tile-meta-row">
+        <h3>Tile (${x},${y})</h3>
+        <span class="muted">Last 10s trends</span>
+      </div>
+      ${renderSparkline(tile.history)}
+      <div class="stats-grid">
+        <div class="stat">Temp<div class="bar"><i style="width:${tempPct}%"></i></div><small>${tile.temp.toFixed(1)}°C</small></div>
+        <div class="stat">pH<div class="bar"><i style="width:${pHPct}%"></i></div><small>${tile.pH.toFixed(2)}</small></div>
+        <div class="stat">Moisture<div class="bar"><i style="width:${moisturePct}%"></i></div><small>${(tile.moisture*100|0)}%</small></div>
+        <div class="stat">Pressure<div class="bar"><i style="width:${pressurePct}%"></i></div><small>${(tile.pressure||0).toFixed(2)}</small></div>
+      </div>
+    </section>`;
+}
+
+function composeInspector(tile, x, y){
+  if(!tile){
+    return '<section class="panel"><h4>Inspector</h4><div class="muted">No tile selected</div></section>';
+  }
+  const sections=[
+    renderStatsPanel(tile, x, y),
+    `<section class="panel"><h4>Active Reactions</h4>${renderActiveReactions(tile)}</section>`,
+    renderBarSection('Species (aq)', Object.entries(tile.species), 'species'),
+    renderBarSection('Gases', Object.entries(tile.gas), 'gas'),
+    renderBarSection('Solids', Object.entries(tile.solids), 'solids')
+  ];
+  return sections.join('\n');
+}
+
+function renderInspectorAt(x, y){
+  const tile=world.tile(x,y);
+  const markup=composeInspector(tile, x, y);
+  if(markup!==lastInspectorMarkup){
+    inspector.innerHTML=markup;
+    lastInspectorMarkup=markup;
+  }
+}
+
+// --- Game glue ---
+const S=16, W=32, H=32; // grid size -> 512 canvas
+const world=new World(W,H);
+const canvas=document.getElementById('view'); const ctx=canvas.getContext('2d'); const brushSelect=document.getElementById('brush'); const inspector=document.getElementById('inspector');
+let paused=false; let mode='paint'; let brush='HCl';
+const emitShockwave = makeShockwave(world);
+brushSelect.value = brush;
+let inspectorFocus=null;
+let lastInspectorMarkup='';
+
+function seedAcid(){ const t=world.tile(16,16); t.species.HCl=2; t.species.NaHCO3=2; t.moisture=0.5; }
+function seedK(){ const t=world.tile(16,16); t.species.K=1.2; t.species.H2O=3; t.moisture=0.6; t.surfaceFactor.K=0.8; }
+function seedPeroxide(){ const t=world.tile(16,16); t.species.H2O2=3; t.moisture=0.4; t.oxygen=0.25; }
+function clearAll(){
+  historySubscribers.clear();
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){ world.grid[y][x]=new Tile(x,y);} 
+  lastInspectorMarkup='';
+  if(inspectorFocus){
+    const {x,y}=inspectorFocus;
+    const tile=world.tile(x,y);
+    if(tile){
+      subscribeHistory(tile);
+      renderInspectorAt(x,y);
+      return;
+    }
+  }
+  inspectorFocus=null;
+  inspector.innerHTML = composeInspector(null, 0, 0);
+}
+
+// UI
+btnFizz.onclick=()=>seedAcid();
+btnKWater.onclick=()=>seedK();
+btnPeroxide.onclick=()=>seedPeroxide();
+btnClear.onclick=()=>clearAll();
+btnPause.onclick=()=>{ paused=!paused; btnPause.textContent = paused? '▶︎ Resume' : '⏸︎ Pause'; };
+btnPaint.onclick=()=>mode='paint'; btnEyedrop.onclick=()=>mode='inspect';
+brushSelect.onchange=(e)=>{ brush=e.target.value; };
+
+// Input
+canvas.addEventListener('mousemove', e=>{ if(mode!=='paint'||!e.buttons) return; paintAt(e); });
+canvas.addEventListener('mousedown', e=>{ if(mode==='paint') paintAt(e); else inspectAt(e); });
+
+function paintAt(e){
+  const {tileX, tileY} = screenToTile(e);
+  const t=world.tile(tileX,tileY); if(!t) return;
+  t.species[brush]=(t.species[brush]||0)+0.5;
+  if(brush==='H2O') t.moisture=Math.min(1,t.moisture+0.2);
+  if(brush==='K') t.surfaceFactor.K=0.8;
+}
+function inspectAt(e){ const {tileX, tileY} = screenToTile(e); showInspector(tileX,tileY); }
+
+function showInspector(x,y){
+  const tile=world.tile(x,y);
+  if(!tile) return;
+  if(inspectorFocus){
+    const prev = world.tile(inspectorFocus.x, inspectorFocus.y);
+    if(prev && prev!==tile) unsubscribeHistory(prev);
+  }
+  subscribeHistory(tile);
+  inspectorFocus={x,y};
+  renderInspectorAt(x,y);
+}
+
+// Render
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const t=world.grid[y][x];
+    const heat = Math.min(1,(t.temp-20)/200);
+    const gas = Math.min(1, ((t.gas.H2||0)+(t.gas.CO2||0)+(t.gas['H2O_g']||0))/5);
+    const aq = Math.min(1, Object.values(t.species).reduce((a,v)=>a+v,0)/8);
+    const r = Math.floor(40+215*heat);
+    const g = Math.floor(40+150*aq + 60*gas);
+    const b = Math.floor(80+120*aq);
+    ctx.fillStyle=`rgb(${r},${g},${b})`;
+    ctx.fillRect(x*S,y*S,S,S);
+    // pressure ring
+    if((t.pressure||0)>0.1){ ctx.strokeStyle='rgba(255,255,255,0.25)'; ctx.strokeRect(x*S+0.5,y*S+0.5,S-1,S-1); }
+  }
+}
+
+let last=performance.now();
+function loop(){
+  const now=performance.now(); const dt=(now-last)/1000; last=now;
+  if(!paused) simulateFrame(world, dt, now);
+  draw();
+  if(inspectorFocus) renderInspectorAt(inspectorFocus.x, inspectorFocus.y);
+  requestAnimationFrame(loop);
+}
+
+// Seed one scene
+seedAcid(); showInspector(16,16); loop();
+
+</script>
+</body>
+</html>
