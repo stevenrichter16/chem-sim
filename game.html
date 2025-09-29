@@ -95,6 +95,9 @@
   </div>
 
 <script type="module">
+import { recordSubscribedHistories, clearSubscribers } from './src/history.js';
+import { InspectorComponent } from './src/inspector.js';
+
 // --- Inline packs (trimmed) ---
 const Reactions = [
   {
@@ -467,31 +470,6 @@ const MaterialRegistry = {
 };
 const ReactionRegistry = { list: Reactions };
 
-const SPECIES_COLORS = {
-  acid: '#ff6e6b',
-  base: '#5fa7ff',
-  gas: '#b8ff66',
-  solid: '#eaeff5',
-  neutral: '#9ea9ff'
-};
-
-const HISTORY_DURATION_MS = 10000;
-const HISTORY_SAMPLE_MS = 150;
-const historySubscribers = new Set();
-
-function colorForSpecies(id, bag='species'){
-  if(bag==='gas') return SPECIES_COLORS.gas;
-  if(bag==='solids') return SPECIES_COLORS.solid;
-  const mat = MaterialRegistry.get(id);
-  const corrosivity = mat?.corrosivity || '';
-  const tags = mat?.hazardTags || [];
-  if(tags.includes('acid') || /acid/.test(corrosivity)) return SPECIES_COLORS.acid;
-  if(tags.includes('base') || /base/.test(corrosivity)) return SPECIES_COLORS.base;
-  if(mat?.phaseSTP==='g' || /(_g|\(g\))$/.test(id)) return SPECIES_COLORS.gas;
-  if(mat?.phaseSTP==='s' || /\(s\)$/.test(id)) return SPECIES_COLORS.solid;
-  return SPECIES_COLORS.neutral;
-}
-
 function recordReactionActivity(tile, entry){
   if(!tile._activity) tile._activity=[];
   const existing = tile._activity.find(item=>item.id===entry.id);
@@ -634,8 +612,6 @@ function simulateFrame(world, dt, now){
   recordSubscribedHistories(now);
 }
 
-function clampPercent(value){ return Math.max(0, Math.min(100, value)); }
-
 function screenToTile(e){
   const rect=canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
@@ -645,160 +621,6 @@ function screenToTile(e){
   return {tileX:x, tileY:y};
 }
 
-function formatQty(value){
-  if(!isFinite(value)) return '0.00';
-  const abs=Math.abs(value);
-  if(abs>=10) return value.toFixed(0);
-  if(abs>=1) return value.toFixed(1);
-  return value.toFixed(2);
-}
-
-function renderActiveReactions(tile){
-  const list=(tile._activity||[]).filter(Boolean);
-  if(!list.length) return '<div class="muted">No active reactions</div>';
-  const sorted=[...list].sort((a,b)=>(b.extent||0)-(a.extent||0)).slice(0,5);
-  return `<div class="reaction-list">${sorted.map(renderReactionCard).join('')}</div>`;
-}
-
-function renderReactionCard(info){
-  const percent=Math.round(Math.min(1, info.extent||0)*100);
-  const limiterLabel = info.limiter && info.limiter!=='rate' ? info.limiter : 'rate-limited';
-  const icons=`${info.fizz?'<span class="icon" title="Gas evolution">⚡</span>':''}${info.heat?'<span class="icon" title="Exothermic heat spike">🔥</span>':''}`;
-  const products=(info.products||[]).sort((a,b)=>(b.qty||0)-(a.qty||0)).slice(0,4);
-  const productText=products.length?products.map(p=>`${p.id} (${formatQty(p.qty||0)})`).join(', '):'—';
-  return `
-    <div class="reaction">
-      <header><span class="rxid">${info.id}</span><span class="icons">${icons}</span></header>
-      <div class="meter"><i style="width:${percent}%"></i></div>
-      <div class="meta"><strong>Intensity</strong><span>${percent}%</span></div>
-      <div class="meta"><strong>Limiter</strong><span>${limiterLabel}</span></div>
-      <div class="meta"><strong>Products</strong><span>${productText}</span></div>
-    </div>`;
-}
-
-function renderBarSection(title, entries, bag){
-  const items=entries.filter(([,v])=>v>0.0001).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  if(!items.length) return `<section class="panel"><h4>${title}</h4><div class="muted">None</div></section>`;
-  const max=items[0][1];
-  const rows=items.map(([id,value])=>{
-    const width=max>0?Math.max(4, (value/max)*100):0;
-    const color=colorForSpecies(id, bag);
-    return `<div class="bar-row"><span class="label">${id}</span><div class="bar-track"><i style="width:${clampPercent(width)}%; background:${color};"></i></div><span class="value">${formatQty(value)}</span></div>`;
-  }).join('');
-  return `<section class="panel"><h4>${title}</h4>${rows}</section>`;
-}
-
-function ensureHistoryBuffer(tile){
-  if(!tile) return null;
-  if(!tile.history) tile.history=[];
-  if(!tile._historyMeta) tile._historyMeta={ lastSampleAt: -Infinity };
-  return tile.history;
-}
-
-function subscribeHistory(tile){
-  if(!tile) return;
-  ensureHistoryBuffer(tile);
-  historySubscribers.add(tile);
-}
-
-function unsubscribeHistory(tile, {clear=false}={}){
-  if(!tile) return;
-  historySubscribers.delete(tile);
-  if(clear && tile.history) tile.history.length=0;
-  if(tile._historyMeta) tile._historyMeta.lastSampleAt = -Infinity;
-}
-
-function recordSubscribedHistories(now){
-  if(!historySubscribers.size) return;
-  const cutoff = now - HISTORY_DURATION_MS;
-  for(const tile of historySubscribers){
-    if(!tile) continue;
-    const history = ensureHistoryBuffer(tile);
-    if(!history) continue;
-    const meta = tile._historyMeta;
-    if(meta && (now - (meta.lastSampleAt||-Infinity)) < HISTORY_SAMPLE_MS) continue;
-    history.push({ t: now, temp: tile.temp, pressure: tile.pressure||0 });
-    if(meta) meta.lastSampleAt = now;
-    while(history.length && history[0].t < cutoff){ history.shift(); }
-    if(history.length>200) history.shift();
-  }
-}
-
-function renderSparkline(history){
-  if(!history || history.length<2){
-    return '<div class="sparkline-wrap"><div class="sparkline sparkline-empty"></div><div class="sparkline-legend muted">Collecting history…</div></div>';
-  }
-  const width=200, height=60, pad=4;
-  const minT=history[0].t;
-  const maxT=history[history.length-1].t;
-  const span=Math.max(1, maxT-minT);
-  const temps=history.map(h=>h.temp);
-  const presses=history.map(h=>(h.pressure||0));
-  const minTemp=Math.min(...temps), maxTemp=Math.max(...temps);
-  const minPress=Math.min(...presses), maxPress=Math.max(...presses);
-  const mapPoints=(values,minVal,maxVal)=>values.map((v,i)=>{
-    const x=pad+((history[i].t-minT)/span)*(width-2*pad);
-    const range=maxVal-minVal;
-    const ratio=range?((v-minVal)/range):0.5;
-    const y=height-pad - ratio*(height-2*pad);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  const tempPoints=mapPoints(temps,minTemp,maxTemp);
-  const pressurePoints=mapPoints(presses,minPress,maxPress);
-  const latest=history[history.length-1];
-  return `<div class="sparkline-wrap">
-    <svg class="sparkline" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
-      <polyline class="temp" points="${tempPoints}" />
-      <polyline class="pressure" points="${pressurePoints}" />
-    </svg>
-    <div class="sparkline-legend"><span class="temp-dot">Temp ${latest.temp.toFixed(1)}°C</span><span class="pressure-dot">Pressure ${(latest.pressure||0).toFixed(2)}</span></div>
-  </div>`;
-}
-
-function renderStatsPanel(tile, x, y){
-  const tempPct=clampPercent((tile.temp-20)/5);
-  const pHPct=clampPercent((tile.pH/14)*100);
-  const moisturePct=clampPercent(tile.moisture*100);
-  const pressurePct=clampPercent(((tile.pressure||0)/12)*100);
-  return `
-    <section class="panel tile-panel">
-      <div class="tile-meta-row">
-        <h3>Tile (${x},${y})</h3>
-        <span class="muted">Last 10s trends</span>
-      </div>
-      ${renderSparkline(tile.history)}
-      <div class="stats-grid">
-        <div class="stat">Temp<div class="bar"><i style="width:${tempPct}%"></i></div><small>${tile.temp.toFixed(1)}°C</small></div>
-        <div class="stat">pH<div class="bar"><i style="width:${pHPct}%"></i></div><small>${tile.pH.toFixed(2)}</small></div>
-        <div class="stat">Moisture<div class="bar"><i style="width:${moisturePct}%"></i></div><small>${(tile.moisture*100|0)}%</small></div>
-        <div class="stat">Pressure<div class="bar"><i style="width:${pressurePct}%"></i></div><small>${(tile.pressure||0).toFixed(2)}</small></div>
-      </div>
-    </section>`;
-}
-
-function composeInspector(tile, x, y){
-  if(!tile){
-    return '<section class="panel"><h4>Inspector</h4><div class="muted">No tile selected</div></section>';
-  }
-  const sections=[
-    renderStatsPanel(tile, x, y),
-    `<section class="panel"><h4>Active Reactions</h4>${renderActiveReactions(tile)}</section>`,
-    renderBarSection('Species (aq)', Object.entries(tile.species), 'species'),
-    renderBarSection('Gases', Object.entries(tile.gas), 'gas'),
-    renderBarSection('Solids', Object.entries(tile.solids), 'solids')
-  ];
-  return sections.join('\n');
-}
-
-function renderInspectorAt(x, y){
-  const tile=world.tile(x,y);
-  const markup=composeInspector(tile, x, y);
-  if(markup!==lastInspectorMarkup){
-    inspector.innerHTML=markup;
-    lastInspectorMarkup=markup;
-  }
-}
-
 // --- Game glue ---
 const S=16, W=32, H=32; // grid size -> 512 canvas
 const world=new World(W,H);
@@ -806,27 +628,15 @@ const canvas=document.getElementById('view'); const ctx=canvas.getContext('2d');
 let paused=false; let mode='paint'; let brush='HCl';
 const emitShockwave = makeShockwave(world);
 brushSelect.value = brush;
-let inspectorFocus=null;
-let lastInspectorMarkup='';
+const inspectorView = new InspectorComponent(inspector, MaterialRegistry);
 
 function seedAcid(){ const t=world.tile(16,16); t.species.HCl=2; t.species.NaHCO3=2; t.moisture=0.5; }
 function seedK(){ const t=world.tile(16,16); t.species.K=1.2; t.species.H2O=3; t.moisture=0.6; t.surfaceFactor.K=0.8; }
 function seedPeroxide(){ const t=world.tile(16,16); t.species.H2O2=3; t.moisture=0.4; t.oxygen=0.25; }
 function clearAll(){
-  historySubscribers.clear();
+  clearSubscribers();
   for(let y=0;y<H;y++) for(let x=0;x<W;x++){ world.grid[y][x]=new Tile(x,y);} 
-  lastInspectorMarkup='';
-  if(inspectorFocus){
-    const {x,y}=inspectorFocus;
-    const tile=world.tile(x,y);
-    if(tile){
-      subscribeHistory(tile);
-      renderInspectorAt(x,y);
-      return;
-    }
-  }
-  inspectorFocus=null;
-  inspector.innerHTML = composeInspector(null, 0, 0);
+  inspectorView.onWorldCleared(world);
 }
 
 // UI
@@ -852,15 +662,7 @@ function paintAt(e){
 function inspectAt(e){ const {tileX, tileY} = screenToTile(e); showInspector(tileX,tileY); }
 
 function showInspector(x,y){
-  const tile=world.tile(x,y);
-  if(!tile) return;
-  if(inspectorFocus){
-    const prev = world.tile(inspectorFocus.x, inspectorFocus.y);
-    if(prev && prev!==tile) unsubscribeHistory(prev);
-  }
-  subscribeHistory(tile);
-  inspectorFocus={x,y};
-  renderInspectorAt(x,y);
+  inspectorView.select(world, x, y);
 }
 
 // Render
@@ -886,12 +688,12 @@ function loop(){
   const now=performance.now(); const dt=(now-last)/1000; last=now;
   if(!paused) simulateFrame(world, dt, now);
   draw();
-  if(inspectorFocus) renderInspectorAt(inspectorFocus.x, inspectorFocus.y);
+  inspectorView.refresh(world);
   requestAnimationFrame(loop);
 }
 
 // Seed one scene
-seedAcid(); showInspector(16,16); loop();
+seedAcid(); inspectorView.select(world,16,16); loop();
 
 </script>
 </body>
