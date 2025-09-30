@@ -29,6 +29,10 @@
     #inspector .stat .bar { height:8px; background:#060b18; border-radius:6px; overflow:hidden; margin-top:4px; }
     #inspector .stat .bar i { display:block; height:100%; background:linear-gradient(90deg,var(--accent),#8cf); }
     #inspector .stat small { display:block; margin-top:4px; font-size:11px; color:var(--muted); }
+    #narration { margin:12px; background:#0f1528; border:1px solid #000; border-radius:10px; padding:10px 12px; }
+    #narration h4 { margin:0 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); }
+    #narrationBody { color:var(--ink); font-size:12px; line-height:1.35; }
+    #narrationBody > div + div { margin-top:4px; }
     .reaction-list { display:flex; flex-direction:column; gap:8px; }
     .reaction { background:#0a1124; border:1px solid #000; border-radius:8px; padding:8px; }
     .reaction header { display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--ink); }
@@ -90,6 +94,10 @@
     </section>
     <aside id="right">
       <div id="inspector"></div>
+      <div id="narration" class="panel">
+        <h4>Plain-English</h4>
+        <div id="narrationBody"></div>
+      </div>
       <div id="legend">Heat = red • Gas = bright • Liquid/Aq = blue-green • Pressure rings pulse outward</div>
     </aside>
   </div>
@@ -97,6 +105,7 @@
 <script type="module">
 import { recordSubscribedHistories, clearSubscribers } from './src/history.js';
 import { InspectorComponent } from './src/inspector.js';
+import { createNarrator } from './src/narration.js';
 
 // --- Inline packs (trimmed) ---
 const Reactions = [
@@ -243,6 +252,97 @@ const Reactions = [
     "rates": {"base": 0.9},
     "effects": {"precipitate": {"AgCl(s)": 1.0}},
     "visuals": {"cloudy": true}
+  },
+  {
+    "id": "metal_water_ca",
+    "equation": "Ca + 2 H2O -> Ca(OH)2 + H2",
+    "stoich": {
+      "reactants": {"Ca": 1, "H2O": 2},
+      "products": {"Ca(OH)2": 1, "H2": 1}
+    },
+    "phases": {"Ca": "s", "H2O": "l", "Ca(OH)2": "aq", "H2": "g"},
+    "tags": ["metal_water", "gas_evolution"],
+    "rates": {"base": 0.6, "requires": {"moisture": 0.02}, "surfaceRole": "Ca"},
+    "effects": { "heatPerUnit": 20, "emitGas": {"H2": 1.0}, "pHDelta": 0.8 },
+    "visuals": {"bubbles": true}
+  },
+  {
+    "id": "metal_acid_zn_hcl",
+    "equation": "Zn + 2 HCl -> ZnCl2 + H2",
+    "stoich": {
+      "reactants": {"Zn": 1, "HCl": 2},
+      "products": {"ZnCl2": 1, "H2": 1}
+    },
+    "phases": {"Zn": "s", "HCl": "aq", "ZnCl2": "aq", "H2": "g"},
+    "tags": ["metal_acid", "gas_evolution"],
+    "rates": {"base": 0.65, "surfaceRole": "Zn"},
+    "effects": { "heatPerUnit": 15, "emitGas": {"H2": 1.0} },
+    "visuals": {"bubbles": true}
+  },
+  {
+    "id": "acid_cu_hno3",
+    "equation": "Cu + 4 HNO3 -> Cu(NO3)2 + 2 NO2 + 2 H2O",
+    "stoich": {
+      "reactants": {"Cu": 1, "HNO3": 4},
+      "products": {"Cu(NO3)2": 1, "NO2": 2, "H2O": 2}
+    },
+    "phases": {"Cu": "s", "HNO3": "aq", "Cu(NO3)2": "aq", "NO2": "g", "H2O": "l"},
+    "tags": ["oxidation", "gas_evolution"],
+    "rates": {"base": 0.4},
+    "effects": { "emitGas": {"NO2": 1.0}, "heatPerUnit": 20, "pHDelta": -1.0 },
+    "visuals": {"gasColor": "brown"}
+  },
+  {
+    "id": "acid_sugar_h2so4",
+    "equation": "C12H22O11 + H2SO4 -> 12 C + 11 H2O",
+    "stoich": {
+      "reactants": {"C12H22O11": 1, "H2SO4": 1},
+      "products": {"C": 12, "H2O": 11}
+    },
+    "phases": {"C12H22O11": "s", "H2SO4": "aq", "C": "s", "H2O": "l"},
+    "tags": ["dehydration", "exothermic"],
+    "rates": {"base": 0.25},
+    "effects": { "heatPerUnit": 40 },
+    "visuals": {"foam": true, "color": "black"}
+  },
+  {
+    "id": "precip_cuso4_naoh",
+    "equation": "CuSO4 + 2 NaOH -> Cu(OH)2 ↓ + Na2SO4",
+    "stoich": {
+      "reactants": {"CuSO4": 1, "NaOH": 2},
+      "products": {"Cu(OH)2": 1, "Na2SO4": 1}
+    },
+    "phases": {"CuSO4": "aq", "NaOH": "aq", "Cu(OH)2": "s", "Na2SO4": "aq"},
+    "tags": ["precipitation"],
+    "rates": {"base": 0.85},
+    "effects": { "precipitate": {"Cu(OH)2": 1.0} },
+    "visuals": {"cloudy": true, "color": "blue"}
+  },
+  {
+    "id": "precip_bacl2_na2so4",
+    "equation": "BaCl2 + Na2SO4 -> BaSO4 ↓ + 2 NaCl",
+    "stoich": {
+      "reactants": {"BaCl2": 1, "Na2SO4": 1},
+      "products": {"BaSO4": 1, "NaCl": 2}
+    },
+    "phases": {"BaCl2": "aq", "Na2SO4": "aq", "BaSO4": "s", "NaCl": "aq"},
+    "tags": ["precipitation"],
+    "rates": {"base": 0.8},
+    "effects": { "precipitate": {"BaSO4": 1.0} },
+    "visuals": {"cloudy": true, "color": "white"}
+  },
+  {
+    "id": "precip_pb_no3_ki",
+    "equation": "Pb(NO3)2 + 2 KI -> PbI2 ↓ + 2 KNO3",
+    "stoich": {
+      "reactants": {"Pb(NO3)2": 1, "KI": 2},
+      "products": {"PbI2": 1, "KNO3": 2}
+    },
+    "phases": {"Pb(NO3)2": "aq", "KI": "aq", "PbI2": "s", "KNO3": "aq"},
+    "tags": ["precipitation"],
+    "rates": {"base": 0.85},
+    "effects": { "precipitate": {"PbI2": 1.0} },
+    "visuals": {"cloudy": true, "color": "yellow"}
   }
 ];
 const Materials = {
@@ -447,6 +547,158 @@ const Materials = {
       "hazardTags": ["precipitate"],
       "statusHooks": { "clogging": 0.6 },
       "defaultSurfaceFactor": 0.4
+    },
+    "Ca": {
+      "displayName": "Calcium",
+      "phaseSTP": "s",
+      "color": "silvery",
+      "hazardTags": ["water_reactive"],
+      "defaultSurfaceFactor": 0.5
+    },
+    "Mg": {
+      "displayName": "Magnesium",
+      "phaseSTP": "s",
+      "color": "silvery",
+      "hazardTags": ["burns_bright"],
+      "defaultSurfaceFactor": 0.5
+    },
+    "Zn": {
+      "displayName": "Zinc",
+      "phaseSTP": "s",
+      "color": "grey",
+      "hazardTags": ["acid_reactive"],
+      "defaultSurfaceFactor": 0.5
+    },
+    "HNO3": {
+      "displayName": "Nitric Acid (aq)",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "corrosivity": "acid",
+      "hazardTags": ["oxidizer", "acid"],
+      "defaultSurfaceFactor": 0.8
+    },
+    "H2SO4": {
+      "displayName": "Sulfuric Acid (aq)",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "corrosivity": "acid",
+      "hazardTags": ["acid", "dehydrating"],
+      "defaultSurfaceFactor": 0.8
+    },
+    "Cu": {
+      "displayName": "Copper",
+      "phaseSTP": "s",
+      "color": "red",
+      "hazardTags": ["metal"],
+      "defaultSurfaceFactor": 0.4
+    },
+    "CuSO4": {
+      "displayName": "Copper(II) Sulfate",
+      "phaseSTP": "aq",
+      "color": "blue",
+      "hazardTags": ["toxic"],
+      "defaultSurfaceFactor": 0.8
+    },
+    "BaCl2": {
+      "displayName": "Barium Chloride",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "hazardTags": ["toxic"],
+      "defaultSurfaceFactor": 0.8
+    },
+    "Pb(NO3)2": {
+      "displayName": "Lead(II) Nitrate",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "hazardTags": ["toxic"],
+      "defaultSurfaceFactor": 0.8
+    },
+    "KI": {
+      "displayName": "Potassium Iodide",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "defaultSurfaceFactor": 0.8
+    },
+    "I2": {
+      "displayName": "Iodine",
+      "phaseSTP": "s",
+      "color": "purple_brown",
+      "hazardTags": ["stains", "toxic"],
+      "defaultSurfaceFactor": 0.4
+    },
+    "NO2": {
+      "displayName": "Nitrogen Dioxide",
+      "phaseSTP": "g",
+      "color": "brown",
+      "hazardTags": ["toxic"],
+      "defaultSurfaceFactor": 1.0
+    },
+    "PbI2": {
+      "displayName": "Lead(II) Iodide",
+      "phaseSTP": "s",
+      "color": "yellow",
+      "hazardTags": ["toxic", "precipitate"],
+      "defaultSurfaceFactor": 0.4
+    },
+    "Ca(OH)2": {
+      "displayName": "Calcium Hydroxide (aq)",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "hazardTags": ["base"],
+      "defaultSurfaceFactor": 0.7
+    },
+    "ZnCl2": {
+      "displayName": "Zinc Chloride (aq)",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "hazardTags": ["toxic"],
+      "defaultSurfaceFactor": 0.8
+    },
+    "Cu(NO3)2": {
+      "displayName": "Copper(II) Nitrate",
+      "phaseSTP": "aq",
+      "color": "blue",
+      "hazardTags": ["toxic"],
+      "defaultSurfaceFactor": 0.8
+    },
+    "C12H22O11": {
+      "displayName": "Sucrose",
+      "phaseSTP": "s",
+      "color": "white",
+      "defaultSurfaceFactor": 0.4
+    },
+    "C": {
+      "displayName": "Carbon",
+      "phaseSTP": "s",
+      "color": "black",
+      "defaultSurfaceFactor": 0.4
+    },
+    "Cu(OH)2": {
+      "displayName": "Copper(II) Hydroxide",
+      "phaseSTP": "s",
+      "color": "blue",
+      "hazardTags": ["precipitate"],
+      "defaultSurfaceFactor": 0.4
+    },
+    "Na2SO4": {
+      "displayName": "Sodium Sulfate (aq)",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "defaultSurfaceFactor": 0.8
+    },
+    "BaSO4": {
+      "displayName": "Barium Sulfate",
+      "phaseSTP": "s",
+      "color": "white",
+      "hazardTags": ["precipitate"],
+      "defaultSurfaceFactor": 0.4
+    },
+    "KNO3": {
+      "displayName": "Potassium Nitrate (aq)",
+      "phaseSTP": "aq",
+      "color": "clear",
+      "hazardTags": ["oxidizer"],
+      "defaultSurfaceFactor": 0.8
     }
   }
 };
@@ -621,6 +873,40 @@ function screenToTile(e){
   return {tileX:x, tileY:y};
 }
 
+function renderNarration(){
+  if(!narrationBody) return;
+  if(!inspectorView.focus){
+    if(lastNarrationKey !== 'none'){
+      narrationBody.textContent = 'Select a tile to see a description.';
+      lastNarrationKey = 'none';
+      lastNarrationUpdate = performance.now();
+    }
+    return;
+  }
+  const {x,y} = inspectorView.focus;
+  const tile = world.tile(x,y);
+  if(!tile){
+    if(lastNarrationKey !== 'missing'){
+      narrationBody.textContent = 'Tile unavailable.';
+      lastNarrationKey = 'missing';
+      lastNarrationUpdate = performance.now();
+    }
+    return;
+  }
+  const lines = narrator.narrateTile(tile);
+  const key = JSON.stringify(lines);
+  if(key === lastNarrationKey) return;
+  const now = performance.now();
+  if(lastNarrationKey && now - lastNarrationUpdate < 250) return;
+  lastNarrationKey = key;
+  lastNarrationUpdate = now;
+  narrationBody.replaceChildren(...lines.map(text => {
+    const div=document.createElement('div');
+    div.textContent=text;
+    return div;
+  }));
+}
+
 // --- Game glue ---
 const S=16, W=32, H=32; // grid size -> 512 canvas
 const world=new World(W,H);
@@ -629,6 +915,10 @@ let paused=false; let mode='paint'; let brush='HCl';
 const emitShockwave = makeShockwave(world);
 brushSelect.value = brush;
 const inspectorView = new InspectorComponent(inspector, MaterialRegistry);
+const narrator = createNarrator(MaterialRegistry, ReactionRegistry.list);
+const narrationBody = document.getElementById('narrationBody');
+let lastNarrationKey = '';
+let lastNarrationUpdate = 0;
 
 function seedAcid(){ const t=world.tile(16,16); t.species.HCl=2; t.species.NaHCO3=2; t.moisture=0.5; }
 function seedK(){ const t=world.tile(16,16); t.species.K=1.2; t.species.H2O=3; t.moisture=0.6; t.surfaceFactor.K=0.8; }
@@ -637,6 +927,7 @@ function clearAll(){
   clearSubscribers();
   for(let y=0;y<H;y++) for(let x=0;x<W;x++){ world.grid[y][x]=new Tile(x,y);} 
   inspectorView.onWorldCleared(world);
+  renderNarration();
 }
 
 // UI
@@ -663,6 +954,7 @@ function inspectAt(e){ const {tileX, tileY} = screenToTile(e); showInspector(til
 
 function showInspector(x,y){
   inspectorView.select(world, x, y);
+  renderNarration();
 }
 
 // Render
@@ -689,11 +981,12 @@ function loop(){
   if(!paused) simulateFrame(world, dt, now);
   draw();
   inspectorView.refresh(world);
+  renderNarration();
   requestAnimationFrame(loop);
 }
 
 // Seed one scene
-seedAcid(); inspectorView.select(world,16,16); loop();
+seedAcid(); inspectorView.select(world,16,16); renderNarration(); loop();
 
 </script>
 </body>

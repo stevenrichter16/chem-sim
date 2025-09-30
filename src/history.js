@@ -36,7 +36,14 @@ export function recordSubscribedHistories(now){
     if(!history) continue;
     const meta = tile._historyMeta;
     if(meta && (now - (meta.lastSampleAt||-Infinity)) < HISTORY_SAMPLE_MS) continue;
-    history.push({ t: now, temp: tile.temp, pressure: tile.pressure||0 });
+    const gasSum = Object.values(tile.gas || {}).reduce((a,v)=>a+(v||0),0);
+    history.push({
+      t: now,
+      temp: tile.temp,
+      pressure: tile.pressure||0,
+      pH: tile.pH,
+      gasSum
+    });
     if(meta) meta.lastSampleAt = now;
     while(history.length && history[0].t < cutoff){ history.shift(); }
     if(history.length>200) history.shift();
